@@ -1,14 +1,16 @@
 #include "opencv2/opencv.hpp"
 #include "stdio.h"
 #include <sys/time.h>
+#include <cmath>
 
 using namespace cv;
 
-#define FEED_SIZE 4
-#define PER_FRAME_TIME_LOGGING 1
-#define SHOW_FEED_WINDOW 1
+#define FEED_SIZE 3
+#define PER_FRAME_TIME_LOGGING 0
+#define SHOW_FEED_WINDOW 0
 #define SHOW_OUTPUT_WINDOW 1
 #define SHOW_OTHER_WINDOWS 0
+#define DRAW_DEBUG_DATA 0
 
 #if (FEED_SIZE == 1)
 
@@ -52,6 +54,8 @@ long captureTime = 0,
 
 int nFrames = 0;
 
+const double areaRatio = 0.65;
+
 void recordTime(long delta, double *avgTime) {
   *avgTime = (*avgTime * nFrames + delta) / (nFrames + 1);
 }
@@ -65,14 +69,19 @@ int main() {
   struct timeval timea, timeb, startTime, endTime;
   gettimeofday(&startTime, NULL);
   printf("initializing\n");
-  Mat frame, gray, hsv, hue, sat, val, huered, scalehuered, scalesat, balloonyness;
+  Mat frame, gray, hsv, hue, sat, val, huered, scalehuered, scalesat,
+    balloonyness, thresh, draw;
   vector<Mat> hsvplanes(3);
   hsvplanes[0] = hue;
   hsvplanes[1] = sat;
   hsvplanes[2] = val;
+  vector< vector< Point > > contours;
   VideoCapture camera(0);
   camera.set(CV_CAP_PROP_FRAME_WIDTH, FEED_WIDTH);
   camera.set(CV_CAP_PROP_FRAME_HEIGHT, FEED_HEIGHT);
+  //VideoWriter writer("output.mjpg", CV_FOURCC('M', 'J', 'P', 'G'), 3.5, Size(FEED_WIDTH, FEED_HEIGHT));
+  // printf("writer opened: %d\n", writer.isOpened());
+  printf("optimized code: %d\n", useOptimized());
   int key;
 #if (SHOW_FEED_WINDOW == 1)
   namedWindow("feed");
@@ -83,14 +92,17 @@ int main() {
   namedWindow("huered");
   namedWindow("sat");
   namedWindow("val");
+  namedWindow("balloonyness");
+  namedWindow("threshold");
 #endif
 #if (SHOW_OUTPUT_WINDOW == 1)
-  namedWindow("balloonyness");
+  namedWindow("draw");
 #endif
   printf("starting balloon recognition\n");
   while(true) {
     gettimeofday(&timea, NULL);
     camera >> frame;
+    draw = frame.clone();
     gettimeofday(&timeb, NULL);
     captureTime = getTimeDelta(timea, timeb);
 #if (PER_FRAME_TIME_LOGGING == 1)
@@ -121,6 +133,24 @@ int main() {
     divide(sat, Scalar(64), scalesat);
     multiply(huered, Scalar(2), scalehuered);
     multiply(scalehuered, scalesat, balloonyness);
+    threshold(balloonyness, thresh, 200, 255, THRESH_BINARY);
+    findContours(thresh.clone(), contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+#if (DRAW_DEBUG_DATA == 1)
+    drawContours(draw, contours, -1, Scalar(255, 0, 0));
+#endif
+    vector< Point2f > circleCenters(contours.size());
+    vector< float > circleRadii(contours.size());
+    Point2f center;
+    float radius;
+    for (int n = 0; n < contours.size(); ++n) {
+      minEnclosingCircle(contours[n], center, radius);
+#if (DRAW_DEBUG_DATA == 1)
+      circle(draw, center, radius, Scalar(0, 255, 255));
+#endif
+      if (contourArea(contours[n]) >= areaRatio * radius*radius*3.1415926) {
+	circle(draw, center, radius, Scalar(0, 255, 0), 2);
+      }
+    }
     gettimeofday(&timeb, NULL);
     processingTime = getTimeDelta(timea, timeb);
 #if (PER_FRAME_TIME_LOGGING == 1)
@@ -135,10 +165,13 @@ int main() {
     imshow("hue", hue);
     imshow("sat", hsvplanes[1]);
     imshow("val", hsvplanes[2]);
+    imshow("balloonyness", balloonyness);
+    imshow("threshold", thresh);
 #endif
 #if (SHOW_OUTPUT_WINDOW == 1)
-    imshow("balloonyness", balloonyness);
+    imshow("draw", draw);
 #endif
+    //writer << draw;
     gettimeofday(&timeb, NULL);
     displayTime = getTimeDelta(timea, timeb);
 #if (PER_FRAME_TIME_LOGGING == 1)
