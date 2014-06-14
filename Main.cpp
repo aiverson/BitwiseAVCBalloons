@@ -1,4 +1,5 @@
 #include "opencv2/opencv.hpp"
+#include "opencv2/gpu/gpu.hpp"
 #include "stdio.h"
 #include <sys/time.h>
 #include <cmath>
@@ -8,7 +9,7 @@ using namespace cv;
 #define FEED_SIZE 3
 #define PER_FRAME_TIME_LOGGING 0
 #define SHOW_FEED_WINDOW 0
-#define SHOW_OUTPUT_WINDOW 1
+#define SHOW_OUTPUT_WINDOW 0
 #define SHOW_OTHER_WINDOWS 0
 #define DRAW_DEBUG_DATA 0
 
@@ -69,9 +70,10 @@ int main() {
   struct timeval timea, timeb, startTime, endTime;
   gettimeofday(&startTime, NULL);
   printf("initializing\n");
-  Mat frame, gray, hsv, hue, sat, val, huered, scalehuered, scalesat,
-    balloonyness, thresh, draw;
-  vector<Mat> hsvplanes(3);
+  Mat frame_host, gray, hsv_host, hue_host, sat_host, val_host, huered_host, scalehuered_host, scalesat_host,
+    balloonyness_host, thresh_host, draw;
+  gpu::GpuMat frame, hsv, hue, sat, val, huered, scalehuered, scalesat, balloonyness, thresh;
+  vector<gpu::GpuMat> hsvplanes(3);
   hsvplanes[0] = hue;
   hsvplanes[1] = sat;
   hsvplanes[2] = val;
@@ -82,6 +84,9 @@ int main() {
   //VideoWriter writer("output.mjpg", CV_FOURCC('M', 'J', 'P', 'G'), 3.5, Size(FEED_WIDTH, FEED_HEIGHT));
   // printf("writer opened: %d\n", writer.isOpened());
   printf("optimized code: %d\n", useOptimized());
+  printf("cuda devices: %d\n", gpu::getCudaEnabledDeviceCount());
+  printf("current device: %d\n", gpu::getDevice());
+  //gpu::setDevice(0);
   int key;
 #if (SHOW_FEED_WINDOW == 1)
   namedWindow("feed");
@@ -99,10 +104,12 @@ int main() {
   namedWindow("draw");
 #endif
   printf("starting balloon recognition\n");
-  while(true) {
+  //while(true) {
+  for (int n = 0; n<50; ++n){
     gettimeofday(&timea, NULL);
-    camera >> frame;
-    draw = frame.clone();
+    camera >> frame_host;
+    draw = frame_host.clone();
+    frame.upload(frame_host);
     gettimeofday(&timeb, NULL);
     captureTime = getTimeDelta(timea, timeb);
 #if (PER_FRAME_TIME_LOGGING == 1)
@@ -111,14 +118,15 @@ int main() {
     //cvtColor(frame, gray, CV_BGR2GRAY);
     // imshow("gray", gray);
     gettimeofday(&timea, NULL);
-    cvtColor(frame, hsv, CV_BGR2HSV);
+    gpu::cvtColor(frame, hsv, CV_BGR2HSV);
+    //hsv.download(hsv_host);
     gettimeofday(&timeb, NULL);
     conversionTime = getTimeDelta(timea, timeb);
 #if (PER_FRAME_TIME_LOGGING == 1)
     printf("color conversion time used:\t%ld\n", conversionTime);
 #endif
     gettimeofday(&timea, NULL);
-    split(hsv, hsvplanes);
+    gpu::split(hsv, hsvplanes);
     hue = hsvplanes[0];
     sat = hsvplanes[1];
     val = hsvplanes[2];
@@ -128,13 +136,14 @@ int main() {
     printf("split planes time used:   \t%ld\n", splitTime);
 #endif
     gettimeofday(&timea, NULL);
-    absdiff(hue, Scalar(90), huered);
-    divide(huered, Scalar(16), scalehuered);
-    divide(sat, Scalar(64), scalesat);
-    multiply(huered, Scalar(2), scalehuered);
-    multiply(scalehuered, scalesat, balloonyness);
-    threshold(balloonyness, thresh, 200, 255, THRESH_BINARY);
-    findContours(thresh.clone(), contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+    gpu::absdiff(hue, Scalar(90), huered);
+    gpu::divide(huered, Scalar(16), scalehuered);
+    gpu::divide(sat, Scalar(64), scalesat);
+    gpu::multiply(huered, Scalar(2), scalehuered);
+    gpu::multiply(scalehuered, scalesat, balloonyness);
+    gpu::threshold(balloonyness, thresh, 200, 255, THRESH_BINARY);
+    thresh.download(thresh_host);
+    findContours(thresh_host, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 #if (DRAW_DEBUG_DATA == 1)
     drawContours(draw, contours, -1, Scalar(255, 0, 0));
 #endif
