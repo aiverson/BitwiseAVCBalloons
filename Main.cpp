@@ -9,10 +9,10 @@ using namespace cv;
 
 #define FEED_SIZE 4
 #define PER_FRAME_TIME_LOGGING 0
-#define SHOW_FEED_WINDOW 0
-#define SHOW_OTHER_WINDOWS 0
+#define SHOW_FEED_WINDOW 1
+#define SHOW_OTHER_WINDOWS 1
 #define SHOW_OUTPUT_WINDOW 1
-#define DRAW_DEBUG_DATA 0
+#define DRAW_DEBUG_DATA 1
 
 #if (FEED_SIZE == 1)
 
@@ -139,9 +139,9 @@ void processFrame(gpu::GpuMat &hue, gpu::GpuMat &sat, gpu::GpuMat &balloonyness,
   gettimeofday(&timea, NULL);
 
   gpu::absdiff(hue, Scalar(90), huered);
-  gpu::divide(huered, Scalar(16), scalehuered);
-  gpu::divide(sat, Scalar(64), scalesat);
-  gpu::multiply(huered, Scalar(2), scalehuered);
+  gpu::divide(huered, Scalar(4), scalehuered);
+  gpu::divide(sat, Scalar(16), scalesat);
+  //gpu::multiply(huered, Scalar(2), scalehuered);
   gpu::multiply(scalehuered, scalesat, balloonyness);
   gpu::threshold(balloonyness, thresh, 200, 255, THRESH_BINARY);
   thresh.download(thresh_host);
