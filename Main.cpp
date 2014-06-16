@@ -141,7 +141,6 @@ void processFrame(gpu::GpuMat &hue, gpu::GpuMat &sat, gpu::GpuMat &balloonyness,
   gpu::absdiff(hue, Scalar(90), huered);
   gpu::divide(huered, Scalar(4), scalehuered);
   gpu::divide(sat, Scalar(16), scalesat);
-  //gpu::multiply(huered, Scalar(2), scalehuered);
   gpu::multiply(scalehuered, scalesat, balloonyness);
   gpu::threshold(balloonyness, thresh, 200, 255, THRESH_BINARY);
   thresh.download(thresh_host);
