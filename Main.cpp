@@ -10,6 +10,7 @@ using namespace cv;
 #define FEED_SIZE 4
 #define PER_FRAME_TIME_LOGGING 0
 #define SHOW_FEED_WINDOW 0
+#define SHOW_OTHER_WINDOWS 0
 #define SHOW_OUTPUT_WINDOW 1
 #define DRAW_DEBUG_DATA 0
 
@@ -58,8 +59,14 @@ int nFrames = 0;
 const double areaRatio = 0.65;
 
 void initGUI() {
-  #if (SHOW_FEED_WINDOW == 1)
+#if (SHOW_FEED_WINDOW == 1)
   namedWindow("feed");
+#endif
+#if (SHOW_OTHER_WINDOWS == 1)
+  namedWindow("hue");
+  namedWindow("sat");
+  namedWindow("val");
+  namedWindow("balloonyness");
 #endif
 #if (SHOW_OUTPUT_WINDOW == 1)
   namedWindow("debugOverlay");
@@ -83,7 +90,7 @@ void log(const char* msg, ...) {
 #endif
 }
 
-void captureFrame(VideoCapture &camera, Mat frame_host, gpu::GpuMat &frame, Mat &debugOverlay) {
+void captureFrame(VideoCapture &camera, Mat &frame_host, gpu::GpuMat &frame, Mat &debugOverlay) {
   struct timeval timea, timeb;
 
   gettimeofday(&timea, NULL);
@@ -123,9 +130,9 @@ void convertToHSV(gpu::GpuMat &frame, gpu::GpuMat &hue, gpu::GpuMat &sat, gpu::G
   log("split planes time used:   \t%ld\n", splitTime);
 }
 
-void processFrame(gpu::GpuMat hue, gpu::GpuMat sat, Mat debugOverlay) {
+void processFrame(gpu::GpuMat &hue, gpu::GpuMat &sat, gpu::GpuMat &balloonyness, Mat &debugOverlay) {
   struct timeval timea, timeb;
-  gpu::GpuMat huered, scalehuered, scalesat, balloonyness, thresh;
+  gpu::GpuMat huered, scalehuered, scalesat, thresh;
   Mat thresh_host;
   vector< vector< Point > > contours;
 
@@ -153,7 +160,7 @@ void processFrame(gpu::GpuMat hue, gpu::GpuMat sat, Mat debugOverlay) {
     minEnclosingCircle(contours[n], center, radius);
 
 #if (DRAW_DEBUG_DATA == 1)
-    circle(draw, center, radius, Scalar(0, 255, 255));
+    circle(debugOverlay, center, radius, Scalar(0, 255, 255));
 #endif
 
     if (contourArea(contours[n]) >= areaRatio * radius*radius*3.1415926) {
@@ -166,13 +173,24 @@ void processFrame(gpu::GpuMat hue, gpu::GpuMat sat, Mat debugOverlay) {
   log("frame processing time used:\t%ld\n", processingTime);
 }
 
-void displayOutput(Mat frame, Mat debugOverlay) {
+void displayOutput(Mat frame, gpu::GpuMat hue, gpu::GpuMat sat, gpu::GpuMat val, gpu::GpuMat balloonyness, Mat debugOverlay) {
   struct timeval timea, timeb;
 
   gettimeofday(&timea, NULL);
 
 #if (SHOW_FEED_WINDOW == 1)
   imshow("feed", frame);
+#endif
+#if (SHOW_OTHER_WINDOWS ==1)
+  Mat hue_host, sat_host, val_host, balloonyness_host;
+  hue.download(hue_host);
+  sat.download(sat_host);
+  val.download(val_host);
+  balloonyness.download(balloonyness_host);
+  imshow("hue", hue_host);
+  imshow("sat", sat_host);
+  imshow("val", val_host);
+  imshow("balloonyness", balloonyness_host);
 #endif
 #if (SHOW_OUTPUT_WINDOW == 1)
   imshow("debugOverlay", debugOverlay);
@@ -205,8 +223,8 @@ int main() {
   while(true) {
     captureFrame(camera, frame_host, frame, debugOverlay);
     convertToHSV(frame, hue, sat, val);
-    processFrame(hue, sat, debugOverlay);
-    displayOutput(frame_host, debugOverlay);
+    processFrame(hue, sat, balloonyness, debugOverlay);
+    displayOutput(frame_host, hue, sat, val, balloonyness, debugOverlay);
 
     recordTime(captureTime, &avgCaptureTime);
     recordTime(conversionTime, &avgConversionTime);
